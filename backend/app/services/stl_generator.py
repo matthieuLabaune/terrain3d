@@ -4,6 +4,7 @@ STL Generator Service - Converts heightmap to printable STL mesh
 
 import numpy as np
 from stl import mesh as stl_mesh
+from stl import Mode as StlMode
 import io
 from typing import Tuple
 
@@ -226,11 +227,11 @@ class STLGenerator:
         
         for i, face in enumerate(faces):
             for j in range(3):
-                terrain_mesh.vectors[i][j] = vertices[face[j]]
+                terrain_mesh.vectors[i][j] = vertices[int(face[j])]
         
         # Write to bytes
         buffer = io.BytesIO()
-        terrain_mesh.save('mesh.stl', fh=buffer, mode=stl_mesh.Mode.BINARY)
+        terrain_mesh.save('mesh.stl', fh=buffer, mode=StlMode.BINARY)
         buffer.seek(0)
         
         return buffer.read()
