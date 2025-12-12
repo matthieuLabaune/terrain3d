@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Mountain, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Mountain, AlertCircle, RefreshCw } from 'lucide-react';
 import TerrainViewer from './components/TerrainViewer';
 import RegionSelector from './components/RegionSelector';
 import Controls from './components/Controls';
 import ExportPanel from './components/ExportPanel';
 import MetadataPanel from './components/MetadataPanel';
+import LoadingOverlay from './components/LoadingOverlay';
 import { useRegions } from './hooks/useRegions';
 import { useTerrain } from './hooks/useTerrain';
 import type { Region } from './lib/types';
@@ -16,6 +17,7 @@ export default function App() {
         isLoading: terrainLoading,
         isExporting,
         error: terrainError,
+        progress,
         settings,
         loadTerrain,
         downloadSTL,
@@ -52,13 +54,12 @@ export default function App() {
                         <div>
                             <h1 className="text-xl font-bold text-white">Terrain3D</h1>
                             <p className="text-sm text-slate-400">
-                                Modèles 3D imprimables de la France
+                                Modeles 3D imprimables de la France
                             </p>
                         </div>
                     </div>
-
                     <div className="text-sm text-slate-400">
-                        {regions.length} régions disponibles
+                        {regions.length} regions disponibles
                     </div>
                 </div>
             </header>
@@ -70,10 +71,7 @@ export default function App() {
                         <AlertCircle className="w-5 h-5" />
                         <span>{error}</span>
                     </div>
-                    <button
-                        onClick={clearError}
-                        className="text-red-300 hover:text-red-100 text-sm"
-                    >
+                    <button onClick={clearError} className="text-red-300 hover:text-red-100 text-sm">
                         Fermer
                     </button>
                 </div>
@@ -84,7 +82,6 @@ export default function App() {
                 {/* Left sidebar */}
                 <aside className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col overflow-y-auto">
                     <div className="p-4 space-y-6">
-                        {/* Region selection */}
                         <RegionSelector
                             regions={regions}
                             selectedRegion={selectedRegion}
@@ -92,35 +89,20 @@ export default function App() {
                             isLoading={regionsLoading}
                         />
 
-                        {/* Generate button */}
                         {selectedRegion && (
                             <button
                                 onClick={handleRegenerate}
                                 disabled={terrainLoading}
-                                className={`
-                  w-full py-2.5 px-4 rounded-lg font-medium flex items-center justify-center gap-2
-                  transition-all duration-200
-                  ${terrainLoading
-                                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                    }
-                `}
+                                className={"w-full py-2.5 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-200 " + 
+                                    (terrainLoading 
+                                        ? "bg-slate-700 text-slate-400 cursor-not-allowed" 
+                                        : "bg-emerald-600 hover:bg-emerald-500 text-white")}
                             >
-                                {terrainLoading ? (
-                                    <>
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                        Génération...
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw className="w-5 h-5" />
-                                        Régénérer
-                                    </>
-                                )}
+                                <RefreshCw className={"w-5 h-5 " + (terrainLoading ? "animate-spin" : "")} />
+                                {terrainLoading ? "Generation..." : "Regenerer"}
                             </button>
                         )}
 
-                        {/* Controls */}
                         <Controls
                             settings={settings}
                             onSettingsChange={updateSettings}
@@ -134,17 +116,17 @@ export default function App() {
 
                 {/* 3D Viewer */}
                 <main className="flex-1 relative bg-slate-900">
-                    {terrainLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
-                            <div className="text-center">
-                                <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto" />
-                                <p className="mt-4 text-slate-300">Génération du terrain...</p>
-                                <p className="text-sm text-slate-500">
-                                    Téléchargement des données d'élévation
-                                </p>
-                            </div>
-                        </div>
-                    )}
+                    <LoadingOverlay
+                        isVisible={terrainLoading}
+                        progress={progress || undefined}
+                        title={"Generation du terrain" + (selectedRegion ? " - " + selectedRegion.name : "") + "..."}
+                    />
+
+                    <LoadingOverlay
+                        isVisible={isExporting}
+                        progress={progress || undefined}
+                        title="Export STL en cours..."
+                    />
 
                     <TerrainViewer
                         heightmap={terrain?.heightmap || null}
@@ -152,8 +134,7 @@ export default function App() {
                         autoRotate={autoRotate}
                     />
 
-                    {/* Metadata overlay */}
-                    {terrain && (
+                    {terrain && !terrainLoading && (
                         <div className="absolute bottom-4 left-4">
                             <MetadataPanel
                                 metadata={terrain.metadata}
@@ -166,22 +147,21 @@ export default function App() {
                 {/* Right sidebar */}
                 <aside className="w-72 bg-slate-800 border-l border-slate-700 p-4 overflow-y-auto">
                     <ExportPanel
-                        canExport={!!terrain}
+                        canExport={!!terrain && !terrainLoading}
                         isExporting={isExporting}
                         settings={settings}
                         onExport={downloadSTL}
                     />
 
-                    {/* Tips */}
                     <div className="mt-6 p-4 bg-slate-700/50 rounded-lg">
                         <h4 className="text-sm font-medium text-slate-300 mb-2">
-                            💡 Conseils d'impression
+                            Conseils d impression
                         </h4>
                         <ul className="text-xs text-slate-400 space-y-1.5">
-                            <li>• Commencez avec une résolution de 128 pour tester</li>
-                            <li>• L'exagération de hauteur aide à voir les détails</li>
-                            <li>• Le socle rend l'impression plus stable</li>
-                            <li>• Utilisez 20% de remplissage pour économiser du filament</li>
+                            <li>Commencez avec une resolution de 128 pour tester</li>
+                            <li>L exaggeration de hauteur aide a voir les details</li>
+                            <li>Le socle rend l impression plus stable</li>
+                            <li>Utilisez 20% de remplissage pour economiser du filament</li>
                         </ul>
                     </div>
                 </aside>
