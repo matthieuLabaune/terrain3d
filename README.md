@@ -4,7 +4,7 @@
 
 Application web permettant de générer des modèles 3D imprimables (STL) à partir de données d'élévation géographique de la France.
 
-![Terrain3D Screenshot](https://via.placeholder.com/800x400/1e293b/ffffff?text=Terrain3D+Preview)
+[![GitHub](https://img.shields.io/badge/GitHub-terrain3d-blue?logo=github)](https://github.com/matthieuLabaune/terrain3d)
 
 ## ✨ Fonctionnalités
 
