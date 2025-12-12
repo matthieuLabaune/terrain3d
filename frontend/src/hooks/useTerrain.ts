@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { Region, TerrainResponse } from '../lib/types';
+import type { Region, TerrainResponse, BBox } from '../lib/types';
 import { generateTerrain, exportSTL } from '../lib/api';
 
 export interface LoadingProgress {
@@ -43,9 +43,11 @@ export function useTerrain() {
         baseThickness: 5.0,
     });
 
-    const loadTerrain = useCallback(async (region: Region) => {
+    const loadTerrain = useCallback(async (regionOrBbox: Region | { bbox: BBox; name?: string }) => {
         // Calculate total batches based on resolution
-        const totalPoints = settings.resolution * settings.resolution;
+        // With smart fetching, we always fetch at 64x64 max = 4096 points = 9 batches
+        const fetchResolution = Math.min(settings.resolution, 64);
+        const totalPoints = fetchResolution * fetchResolution;
         const batchSize = 500;
         const totalBatches = Math.ceil(totalPoints / batchSize);
 
@@ -56,12 +58,11 @@ export function useTerrain() {
             progress: {
                 current: 0,
                 total: totalBatches,
-                message: "Connexion au serveur d'élévation...",
+                message: "Connexion au serveur d'elevation...",
             },
         }));
 
-        // Simulate progress updates while waiting for the API
-        // (real progress would require SSE/WebSocket from backend)
+        // Simulate progress updates
         let currentBatch = 0;
         const progressInterval = setInterval(() => {
             currentBatch++;
@@ -71,19 +72,31 @@ export function useTerrain() {
                     progress: {
                         current: currentBatch,
                         total: totalBatches,
-                        message: `Téléchargement des données SRTM...`,
+                        message: "Telechargement des donnees SRTM...",
                     },
                 }));
             }
-        }, 600); // ~600ms per batch (matching API rate limit)
+        }, 600);
 
         try {
-            const terrain = await generateTerrain({
-                region: region.id,
-                resolution: settings.resolution,
-                height_exaggeration: settings.heightExaggeration,
-                data_source: 'srtm',
-            });
+            // Determine if it's a Region or custom BBox
+            const isRegion = 'id' in regionOrBbox;
+            
+            const request = isRegion
+                ? {
+                    region: regionOrBbox.id,
+                    resolution: settings.resolution,
+                    height_exaggeration: settings.heightExaggeration,
+                    data_source: 'srtm',
+                }
+                : {
+                    bbox: regionOrBbox.bbox,
+                    resolution: settings.resolution,
+                    height_exaggeration: settings.heightExaggeration,
+                    data_source: 'srtm',
+                };
+
+            const terrain = await generateTerrain(request);
 
             clearInterval(progressInterval);
 
@@ -115,18 +128,17 @@ export function useTerrain() {
             progress: {
                 current: 0,
                 total: 2,
-                message: "Génération du modèle 3D...",
+                message: "Generation du modele 3D...",
             },
         }));
 
-        // Simulate STL generation progress
         setTimeout(() => {
             setState((prev) => ({
                 ...prev,
                 progress: {
                     current: 1,
                     total: 2,
-                    message: "Création du mesh watertight...",
+                    message: "Creation du mesh watertight...",
                 },
             }));
         }, 500);
@@ -141,7 +153,6 @@ export function useTerrain() {
                 base_thickness: settings.baseThickness,
             });
 
-            // Create download link
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

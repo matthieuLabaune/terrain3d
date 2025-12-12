@@ -6,9 +6,10 @@ import Controls from './components/Controls';
 import ExportPanel from './components/ExportPanel';
 import MetadataPanel from './components/MetadataPanel';
 import LoadingOverlay from './components/LoadingOverlay';
+import CustomAreaSelector from './components/CustomAreaSelector';
 import { useRegions } from './hooks/useRegions';
 import { useTerrain } from './hooks/useTerrain';
-import type { Region } from './lib/types';
+import type { Region, BBox } from './lib/types';
 
 export default function App() {
     const { regions, isLoading: regionsLoading, error: regionsError } = useRegions();
@@ -26,12 +27,20 @@ export default function App() {
     } = useTerrain();
 
     const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
+    const [customAreaName, setCustomAreaName] = useState<string | null>(null);
     const [wireframe, setWireframe] = useState(false);
     const [autoRotate, setAutoRotate] = useState(false);
 
     const handleRegionSelect = (region: Region) => {
         setSelectedRegion(region);
+        setCustomAreaName(null);
         loadTerrain(region);
+    };
+
+    const handleCustomBBox = (bbox: BBox) => {
+        setSelectedRegion(null);
+        setCustomAreaName('Zone personnalisee');
+        loadTerrain({ bbox, name: 'Zone personnalisee' });
     };
 
     const handleRegenerate = () => {
@@ -41,6 +50,7 @@ export default function App() {
     };
 
     const error = regionsError || terrainError;
+    const currentName = selectedRegion?.name || customAreaName;
 
     return (
         <div className="h-screen flex flex-col bg-slate-900">
@@ -89,6 +99,12 @@ export default function App() {
                             isLoading={regionsLoading}
                         />
 
+                        {/* Custom area selector */}
+                        <CustomAreaSelector
+                            onBBoxSelect={handleCustomBBox}
+                            isLoading={terrainLoading}
+                        />
+
                         {selectedRegion && (
                             <button
                                 onClick={handleRegenerate}
@@ -119,7 +135,7 @@ export default function App() {
                     <LoadingOverlay
                         isVisible={terrainLoading}
                         progress={progress || undefined}
-                        title={"Generation du terrain" + (selectedRegion ? " - " + selectedRegion.name : "") + "..."}
+                        title={"Generation du terrain" + (currentName ? " - " + currentName : "") + "..."}
                     />
 
                     <LoadingOverlay
@@ -132,13 +148,15 @@ export default function App() {
                         heightmap={terrain?.heightmap || null}
                         wireframe={wireframe}
                         autoRotate={autoRotate}
+                        showBase={settings.addBase}
+                        baseThickness={settings.baseThickness / 10}
                     />
 
                     {terrain && !terrainLoading && (
                         <div className="absolute bottom-4 left-4">
                             <MetadataPanel
                                 metadata={terrain.metadata}
-                                regionName={selectedRegion?.name}
+                                regionName={currentName || undefined}
                             />
                         </div>
                     )}
