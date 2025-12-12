@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+numpy==1.24.3
+httpx==0.25.2
+pydantic==2.5.2
+numpy-stl==3.1.1
+scipy==1.11.4
+python-dotenv==1.0.0
+aiofiles==23.2.1
