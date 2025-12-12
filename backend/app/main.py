@@ -17,20 +17,20 @@ app = FastAPI(
     title="Terrain3D API",
     description="""
     API pour générer des modèles 3D imprimables à partir de données d'élévation géographique.
-    
+
     ## Fonctionnalités
-    
+
     - **Régions prédéfinies**: 12 régions françaises (Mont Blanc, Pyrénées, Corse, etc.)
     - **Génération de terrain**: Création de heightmap à partir des données SRTM
     - **Export STL**: Conversion en fichier STL binaire pour impression 3D
     - **Personnalisation**: Résolution, échelle, exagération des hauteurs
-    
+
     ## Sources de données
-    
+
     - SRTM (Shuttle Radar Topography Mission) - Résolution ~30m
-    
+
     ## Usage
-    
+
     1. Lister les régions disponibles: `GET /api/list-locations`
     2. Générer un terrain: `POST /api/terrain`
     3. Exporter en STL: `POST /api/export-stl`

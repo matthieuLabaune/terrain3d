@@ -1,250 +1,187 @@
 """
-Elevation data service - Fetches DEM data from OpenTopography SRTM
-Uses the SRTM GL1 (30m) dataset which is freely available
+Elevation data service - Fetches real DEM data from Open-Elevation API
+Uses SRTM data which provides ~30m resolution elevation data
 """
 
 import httpx
 import numpy as np
-from typing import Optional, Tuple
-import struct
-import io
+from typing import Tuple
+import asyncio
 from scipy import ndimage
 
 from ..models.schemas import BBox
 
 
 class ElevationService:
-    """Service to fetch elevation data from various sources"""
-    
-    # OpenTopography SRTM 30m endpoint
-    # Using the OpenTopography Global Data portal
-    SRTM_BASE_URL = "https://portal.opentopography.org/API/globaldem"
-    
-    # Fallback: Use SRTM tiles directly via elevation-api
-    ELEVATION_API_URL = "https://api.open-elevation.com/api/v1/lookup"
-    
+    """Service to fetch real elevation data from Open-Elevation API"""
+
+    # Open-Elevation API - free, no API key required
+    OPEN_ELEVATION_URL = "https://api.open-elevation.com/api/v1/lookup"
+
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=60.0)
-    
+        self.client = httpx.AsyncClient(timeout=120.0)
+
     async def close(self):
         await self.client.aclose()
-    
+
     async def fetch_srtm_dem(
-        self, 
-        bbox: BBox, 
+        self,
+        bbox: BBox,
         resolution: int = 256,
         height_exaggeration: float = 1.0
     ) -> Tuple[np.ndarray, dict]:
         """
-        Fetch SRTM DEM data for a bounding box
+        Fetch real SRTM DEM data for a bounding box
         Returns heightmap array and metadata
         """
+        print(f"Fetching real elevation data for bbox: {bbox.lat_min:.2f}-{bbox.lat_max:.2f}N, {bbox.lon_min:.2f}-{bbox.lon_max:.2f}E")
+
         try:
-            # Try OpenTopography first
-            heightmap = await self._fetch_from_opentopography(bbox, resolution)
+            # Fetch real elevation data from Open-Elevation
+            heightmap = await self._fetch_from_open_elevation(bbox, resolution)
+            data_source = "srtm_real"
+            print(f"Successfully fetched real elevation data: {resolution}x{resolution}")
         except Exception as e:
-            print(f"OpenTopography failed: {e}, using synthetic data with real base elevations")
-            # Generate realistic synthetic terrain based on location
-            heightmap = await self._generate_synthetic_terrain(bbox, resolution)
-        
+            print(f"Open-Elevation API failed: {e}")
+            print("Falling back to synthetic terrain generation...")
+            heightmap = self._generate_synthetic_terrain(bbox, resolution)
+            data_source = "synthetic"
+
         # Apply height exaggeration
         if height_exaggeration != 1.0:
             min_elev = heightmap.min()
             heightmap = min_elev + (heightmap - min_elev) * height_exaggeration
-        
+
         metadata = {
             "min_elevation": float(np.min(heightmap)),
             "max_elevation": float(np.max(heightmap)),
             "mean_elevation": float(np.mean(heightmap)),
-            "data_source": "srtm",
+            "data_source": data_source,
             "resolution": resolution,
         }
-        
+
         return heightmap, metadata
-    
-    async def _fetch_from_opentopography(self, bbox: BBox, resolution: int) -> np.ndarray:
+
+    async def _fetch_from_open_elevation(self, bbox: BBox, resolution: int) -> np.ndarray:
         """
-        Fetch from OpenTopography API
-        Note: Requires API key for production use
+        Fetch elevation data from Open-Elevation API
+        This API provides real SRTM data for free
         """
-        params = {
-            "demtype": "SRTMGL1",  # SRTM GL1 30m
-            "south": bbox.lat_min,
-            "north": bbox.lat_max,
-            "west": bbox.lon_min,
-            "east": bbox.lon_max,
-            "outputFormat": "AAIGrid",  # ASCII Grid format
-        }
-        
-        response = await self.client.get(
-            self.SRTM_BASE_URL,
-            params=params,
-            follow_redirects=True
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"OpenTopography API error: {response.status_code}")
-        
-        # Parse AAIGrid format
-        heightmap = self._parse_aaigrid(response.text)
-        
-        # Resample to target resolution
-        heightmap = self._resample(heightmap, resolution)
-        
+        # Create grid of lat/lon points
+        lats = np.linspace(bbox.lat_max, bbox.lat_min, resolution)  # North to South
+        lons = np.linspace(bbox.lon_min, bbox.lon_max, resolution)  # West to East
+
+        # Build list of all points
+        locations = []
+        for lat in lats:
+            for lon in lons:
+                locations.append({"latitude": float(lat), "longitude": float(lon)})
+
+        total_points = len(locations)
+        print(f"Requesting {total_points} elevation points...")
+
+        # API has limits, so we batch requests (max ~1000 points per request)
+        batch_size = 500
+        all_elevations = []
+
+        for i in range(0, total_points, batch_size):
+            batch = locations[i:i + batch_size]
+
+            try:
+                response = await self.client.post(
+                    self.OPEN_ELEVATION_URL,
+                    json={"locations": batch},
+                    timeout=60.0
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    elevations = [r["elevation"] for r in data["results"]]
+                    all_elevations.extend(elevations)
+                    print(f"  Batch {i//batch_size + 1}/{(total_points + batch_size - 1)//batch_size}: {len(elevations)} points")
+                else:
+                    raise Exception(f"API returned status {response.status_code}")
+
+            except Exception as e:
+                print(f"  Batch failed: {e}")
+                raise
+
+            # Small delay between batches to be nice to the API
+            if i + batch_size < total_points:
+                await asyncio.sleep(0.5)
+
+        # Reshape to 2D grid
+        heightmap = np.array(all_elevations).reshape(resolution, resolution)
+
+        # Handle any -32768 (no data) values by interpolation
+        no_data_mask = heightmap < -1000
+        if np.any(no_data_mask):
+            heightmap[no_data_mask] = np.nan
+            heightmap = np.nan_to_num(heightmap, nan=np.nanmean(heightmap))
+
         return heightmap
-    
-    def _parse_aaigrid(self, data: str) -> np.ndarray:
-        """Parse ESRI ASCII Grid format"""
-        lines = data.strip().split('\n')
-        
-        # Parse header
-        header = {}
-        data_start = 0
-        for i, line in enumerate(lines):
-            parts = line.split()
-            if len(parts) == 2 and parts[0].lower() in ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'cellsize', 'nodata_value']:
-                header[parts[0].lower()] = float(parts[1])
-            else:
-                data_start = i
-                break
-        
-        # Parse elevation values
-        values = []
-        for line in lines[data_start:]:
-            row = [float(x) for x in line.split()]
-            values.append(row)
-        
-        heightmap = np.array(values)
-        
-        # Handle NODATA values
-        nodata = header.get('nodata_value', -9999)
-        heightmap[heightmap == nodata] = np.nan
-        
-        # Interpolate NaN values
-        mask = np.isnan(heightmap)
-        if mask.any():
-            heightmap[mask] = np.nanmean(heightmap)
-        
-        return heightmap
-    
-    def _resample(self, data: np.ndarray, target_size: int) -> np.ndarray:
-        """Resample heightmap to target resolution"""
-        if data.shape[0] == target_size and data.shape[1] == target_size:
-            return data
-        
-        zoom_y = target_size / data.shape[0]
-        zoom_x = target_size / data.shape[1]
-        
-        return ndimage.zoom(data, (zoom_y, zoom_x), order=3)
-    
-    async def _generate_synthetic_terrain(
-        self, 
-        bbox: BBox, 
-        resolution: int
-    ) -> np.ndarray:
+
+    def _generate_synthetic_terrain(self, bbox: BBox, resolution: int) -> np.ndarray:
         """
         Generate realistic synthetic terrain based on location
-        Uses multiple octaves of Perlin-like noise with location-based elevation
+        Used as fallback when API fails
         """
-        # Estimate base elevation from latitude (rough approximation for France)
         center_lat = (bbox.lat_min + bbox.lat_max) / 2
         center_lon = (bbox.lon_min + bbox.lon_max) / 2
-        
-        # Get approximate base elevation based on location
+
         base_elevation, elevation_range = self._estimate_elevation_range(center_lat, center_lon)
-        
+
         # Generate multi-octave noise
         x = np.linspace(0, 4, resolution)
         y = np.linspace(0, 4, resolution)
         X, Y = np.meshgrid(x, y)
-        
-        # Multiple octaves for more realistic terrain
+
         heightmap = np.zeros((resolution, resolution))
-        
-        # Octave 1: Large features
-        freq1, amp1 = 1.0, 0.5
-        heightmap += amp1 * self._perlin_like(X * freq1, Y * freq1, seed=42)
-        
-        # Octave 2: Medium features
-        freq2, amp2 = 2.0, 0.25
-        heightmap += amp2 * self._perlin_like(X * freq2, Y * freq2, seed=123)
-        
-        # Octave 3: Small details
-        freq3, amp3 = 4.0, 0.15
-        heightmap += amp3 * self._perlin_like(X * freq3, Y * freq3, seed=456)
-        
-        # Octave 4: Fine details
-        freq4, amp4 = 8.0, 0.1
-        heightmap += amp4 * self._perlin_like(X * freq4, Y * freq4, seed=789)
-        
-        # Normalize to 0-1 range
+
+        # Multiple octaves for realistic terrain
+        for i, (freq, amp, seed) in enumerate([
+            (1.0, 0.5, 42),
+            (2.0, 0.25, 123),
+            (4.0, 0.15, 456),
+            (8.0, 0.1, 789)
+        ]):
+            heightmap += amp * self._perlin_like(X * freq, Y * freq, seed)
+
+        # Normalize and scale
         heightmap = (heightmap - heightmap.min()) / (heightmap.max() - heightmap.min())
-        
-        # Scale to realistic elevation range
         heightmap = base_elevation + heightmap * elevation_range
-        
-        # Add some valleys (lower areas)
-        valley_mask = self._perlin_like(X * 0.5, Y * 0.5, seed=999) < -0.3
-        heightmap[valley_mask] *= 0.7
-        
+
         return heightmap
-    
+
     def _perlin_like(self, x: np.ndarray, y: np.ndarray, seed: int = 42) -> np.ndarray:
-        """Generate Perlin-like noise using sine waves combination"""
+        """Generate Perlin-like noise"""
         np.random.seed(seed)
-        
-        # Random phases
         phases = np.random.random(8) * 2 * np.pi
-        
-        # Combine multiple sine waves at different angles
+
         result = np.zeros_like(x)
         for i in range(4):
             angle = i * np.pi / 4 + phases[i]
             freq = 1 + phases[i + 4] * 0.5
             result += np.sin(freq * (x * np.cos(angle) + y * np.sin(angle)) + phases[i])
-        
+
         return result / 4
-    
+
     def _estimate_elevation_range(self, lat: float, lon: float) -> Tuple[float, float]:
-        """
-        Estimate base elevation and range based on coordinates
-        Returns (base_elevation, elevation_range)
-        """
-        # Alps region (high mountains)
+        """Estimate base elevation and range based on coordinates"""
+        # Alps
         if 44.5 < lat < 46.5 and 5.5 < lon < 8.0:
             return 1500, 2500
-        
         # Pyrenees
         if 42.5 < lat < 43.5 and -2.0 < lon < 3.0:
             return 800, 2000
-        
         # Massif Central
         if 44.5 < lat < 46.0 and 2.0 < lon < 4.0:
             return 600, 1000
-        
         # Corsica
         if 41.3 < lat < 43.0 and 8.5 < lon < 9.6:
             return 400, 2000
-        
-        # Vosges
-        if 47.5 < lat < 48.5 and 6.5 < lon < 7.5:
-            return 400, 1000
-        
-        # Jura
-        if 46.0 < lat < 47.5 and 5.5 < lon < 7.0:
-            return 500, 1200
-        
-        # Coastal Brittany
-        if 47.5 < lat < 49.0 and -5.0 < lon < -1.0:
-            return 0, 100
-        
-        # Atlantic coast
-        if lon < -1.0:
-            return 0, 150
-        
-        # Mediterranean coast
+        # Coastal
         if lat < 44.0 and lon > 3.0:
             return 50, 500
-        
-        # Default (plains)
+        # Default
         return 100, 300

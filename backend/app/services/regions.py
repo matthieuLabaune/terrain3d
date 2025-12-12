@@ -119,17 +119,17 @@ FRANCE_REGIONS: Dict[str, Region] = {
 
 class RegionsService:
     """Service to manage predefined regions"""
-    
+
     @staticmethod
     def get_all_regions() -> List[Region]:
         """Get all predefined regions"""
         return list(FRANCE_REGIONS.values())
-    
+
     @staticmethod
     def get_region(region_id: str) -> Optional[Region]:
         """Get a specific region by ID"""
         return FRANCE_REGIONS.get(region_id)
-    
+
     @staticmethod
     def get_region_ids() -> List[str]:
         """Get all region IDs"""

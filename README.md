@@ -76,29 +76,29 @@ Une fois le backend lancé, accédez à la documentation interactive :
 
 ### Endpoints principaux
 
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/list-locations` | Liste des régions disponibles |
-| POST | `/api/terrain` | Génère un terrain |
-| POST | `/api/export-stl` | Exporte en fichier STL |
-| GET | `/api/estimate` | Estime la taille du fichier |
+| Méthode | Endpoint              | Description                   |
+| ------- | --------------------- | ----------------------------- |
+| GET     | `/api/list-locations` | Liste des régions disponibles |
+| POST    | `/api/terrain`        | Génère un terrain             |
+| POST    | `/api/export-stl`     | Exporte en fichier STL        |
+| GET     | `/api/estimate`       | Estime la taille du fichier   |
 
 ## 🗺️ Régions disponibles
 
-| Région | Type | Altitude max |
-|--------|------|--------------|
-| Mont Blanc | Montagne alpine | 4 808 m |
-| Chamonix | Vallée de montagne | 3 842 m |
-| Pyrénées (Pic du Midi) | Montagne | 2 872 m |
-| Corse (Monte Cinto) | Île montagneuse | 2 706 m |
-| Massif du Vercors | Plateau | 2 341 m |
-| Cirque de Gavarnie | Amphithéâtre | 3 248 m |
-| Mont Ventoux | Montagne isolée | 1 909 m |
-| Gorges du Verdon | Canyon | 1 500 m |
-| Dune du Pilat | Côtier | 110 m |
-| Sainte-Victoire | Collines | 1 011 m |
-| Puy de Dôme | Volcans | 1 465 m |
-| Côte de Granit Rose | Côtier | 80 m |
+| Région                 | Type               | Altitude max |
+| ---------------------- | ------------------ | ------------ |
+| Mont Blanc             | Montagne alpine    | 4 808 m      |
+| Chamonix               | Vallée de montagne | 3 842 m      |
+| Pyrénées (Pic du Midi) | Montagne           | 2 872 m      |
+| Corse (Monte Cinto)    | Île montagneuse    | 2 706 m      |
+| Massif du Vercors      | Plateau            | 2 341 m      |
+| Cirque de Gavarnie     | Amphithéâtre       | 3 248 m      |
+| Mont Ventoux           | Montagne isolée    | 1 909 m      |
+| Gorges du Verdon       | Canyon             | 1 500 m      |
+| Dune du Pilat          | Côtier             | 110 m        |
+| Sainte-Victoire        | Collines           | 1 011 m      |
+| Puy de Dôme            | Volcans            | 1 465 m      |
+| Côte de Granit Rose    | Côtier             | 80 m         |
 
 ## 🛠️ Stack technique
 
